@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Reintegration Core — Anchor Run</title>
+<!-- Build note: Visual Pass B applied. Arcade cabinet/control aesthetics only. Gameplay code, level data, and run model preserved. -->
+
+<!-- ============================================================
+     STYLES  (split candidate: /styles.css)
+     ============================================================ -->
+<style>
+  :root {
+    --bg:        #0b0e10;
+    --concrete:  #1a1f24;
+    --concrete2: #232a30;
+    --strain:    #c2453a;   /* corrupted / unsafe red */
+    --amber:     #f0a13a;   /* diagnostic / tool amber */
+    --signal:    #3ad6c2;   /* stabilized / restored teal */
+    --ink:       #cdd6dd;
+    --ink-dim:   #5d6b75;
+    --line:      #2c343b;
+    --panel-deep:#10161b;
+    --shadow:    #050708;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background:
+      radial-gradient(circle at 50% 20%, rgba(58,214,194,0.06), transparent 32%),
+      radial-gradient(circle at 20% 80%, rgba(194,69,58,0.05), transparent 30%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "SFMono-Regular", "Roboto Mono", "Menlo", Consolas, monospace;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(10px, 2vw, 24px);
+    background:
+      linear-gradient(180deg, rgba(22,29,36,0.88), rgba(6,8,10,0.98) 36%, rgba(11,14,16,1)),
+      radial-gradient(circle at 50% 10%, rgba(240,161,58,0.08), transparent 34%);
+  }
+  #stage::before {
+    content: '';
+    position: absolute;
+    inset: clamp(8px, 2vw, 22px);
+    border: 2px solid rgba(44,52,59,0.72);
+    border-radius: 30px;
+    box-shadow:
+      inset 0 0 0 3px rgba(5,7,8,0.86),
+      inset 0 0 42px rgba(0,0,0,0.78),
+      0 0 28px rgba(0,0,0,0.65);
+    pointer-events: none;
+    z-index: 1;
+  }
+  #stage::after {
+    content: 'ANCHOR RUN  ·  ARCADE CABINET';
+    position: absolute;
+    top: clamp(8px, 1.4vw, 18px);
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(240,161,58,0.42);
+    font-size: 10px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  canvas {
+    position: relative;
+    z-index: 2;
+    display: block;
+    background: #07090a;
+    image-rendering: pixelated;
+    max-width: 100%;
+    max-height: 100%;
+    touch-action: none;
+    border: 4px solid #111820;
+    border-radius: 16px;
+    box-shadow:
+      0 0 0 1px rgba(58,214,194,0.12),
+      0 0 0 6px rgba(5,7,8,0.72),
+      0 18px 46px rgba(0,0,0,0.76),
+      inset 0 0 28px rgba(0,0,0,0.5);
+  }
+
+  /* ---- Overlay screens (TITLE / MENU / PAUSED / COMPLETE) ---- */
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background:
+      linear-gradient(90deg, rgba(7,9,10,0.98), rgba(11,14,16,0.88), rgba(7,9,10,0.98)),
+      radial-gradient(ellipse at center, rgba(11,14,16,0.86), rgba(7,9,10,0.98));
+    padding: 24px;
+    z-index: 10;
+  }
+  .screen.active { display: flex; }
+
+  .eyebrow {
+    letter-spacing: 0.42em;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 14px;
+  }
+  .title {
+    font-size: clamp(34px, 8vw, 68px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 0.92;
+    color: var(--ink);
+  }
+  .title .glitch { color: var(--strain); }
+  .subtitle {
+    margin-top: 18px;
+    max-width: 480px;
+    color: var(--ink-dim);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .worldline {
+    margin-top: 22px;
+    max-width: 440px;
+    color: var(--amber);
+    font-size: 12px;
+    line-height: 1.7;
+    border-left: 2px solid var(--strain);
+    padding-left: 14px;
+    text-align: left;
+  }
+
+  .btn {
+    margin-top: 34px;
+    background: transparent;
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    box-shadow: 0 0 0 1px rgba(240,161,58,0.08), inset 0 0 18px rgba(240,161,58,0.06);
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    padding: 14px 34px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn:hover, .btn:focus-visible { background: var(--amber); color: #0b0e10; outline: none; }
+
+  .hint {
+    margin-top: 26px;
+    color: var(--ink-dim);
+    font-size: 11px;
+    line-height: 1.9;
+    letter-spacing: 0.05em;
+  }
+  .hint kbd {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 7px;
+    color: var(--ink);
+    background: var(--concrete);
+    font-size: 10px;
+    margin: 0 1px;
+  }
+
+  .complete .title { color: var(--signal); }
+  .complete .btn { border-color: var(--signal); color: var(--signal); }
+  .complete .btn:hover, .complete .btn:focus-visible { background: var(--signal); color: #0b0e10; }
+
+  /* ---- Touch controls (mobile) ---- */
+  #touch {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #touch.active { display: block; }
+  #touch.active::before {
+    content: '';
+    position: absolute;
+    left: clamp(10px, 3vw, 28px);
+    right: clamp(10px, 3vw, 28px);
+    bottom: calc(10px + var(--safe-bottom));
+    height: min(34vh, 245px);
+    border: 2px solid rgba(44,52,59,0.62);
+    border-radius: 28px;
+    background:
+      radial-gradient(circle at 18% 68%, rgba(194,69,58,0.12), transparent 32%),
+      radial-gradient(circle at 82% 42%, rgba(58,214,194,0.11), transparent 30%),
+      linear-gradient(180deg, rgba(16,22,27,0.72), rgba(5,7,8,0.84));
+    box-shadow: inset 0 0 32px rgba(0,0,0,0.75), 0 -8px 22px rgba(0,0,0,0.24);
+    pointer-events: none;
+    z-index: 0;
+  }
+  #touch.active::after {
+    content: 'ARCADE CONTROL DECK';
+    position: absolute;
+    left: 50%;
+    bottom: calc(24px + var(--safe-bottom));
+    transform: translateX(-50%);
+    color: rgba(93,107,117,0.58);
+    font-size: 9px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .tbtn {
+    position: absolute;
+    z-index: 2;
+    pointer-events: auto;
+    width: 82px; height: 82px;
+    border: 2px solid rgba(93,107,117,0.88);
+    background:
+      radial-gradient(circle at 38% 28%, rgba(255,255,255,0.14), transparent 26%),
+      linear-gradient(180deg, rgba(32,40,47,0.92), rgba(12,16,20,0.92));
+    color: var(--ink);
+    border-radius: 22px;
+    font-size: 28px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 5px;
+    user-select: none; -webkit-user-select: none;
+    backdrop-filter: blur(3px);
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,0.09),
+      inset 0 -5px 10px rgba(0,0,0,0.45),
+      0 10px 24px rgba(0,0,0,0.48),
+      0 0 0 5px rgba(5,7,8,0.38);
+    transition: transform 0.06s ease, background 0.08s ease, box-shadow 0.08s ease;
+  }
+  .tbtn:active {
+    transform: translateY(3px) scale(0.97);
+    background:
+      radial-gradient(circle at 38% 28%, rgba(255,255,255,0.18), transparent 25%),
+      linear-gradient(180deg, rgba(240,161,58,0.34), rgba(18,22,26,0.96));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      inset 0 -2px 6px rgba(0,0,0,0.5),
+      0 4px 12px rgba(0,0,0,0.58),
+      0 0 0 5px rgba(5,7,8,0.42);
+  }
+  .tbtn small { font-size: 10px; letter-spacing: 0.2em; }
+  #t-left  { left: clamp(20px, 6vw, 46px);  bottom: calc(118px + var(--safe-bottom)); }
+  #t-right { left: clamp(112px, 28vw, 170px); bottom: calc(118px + var(--safe-bottom)); }
+  #t-grap  { right: clamp(20px, 6vw, 46px); bottom: calc(196px + var(--safe-bottom)); width: 96px; height: 96px; border-color: var(--amber); color: #f3c27b; }
+  #t-boost { right: clamp(126px, 30vw, 190px); bottom: calc(110px + var(--safe-bottom)); width: 96px; height: 96px; border-color: var(--signal); color: #a9fff4; }
+  #t-act   { right: clamp(20px, 6vw, 46px); bottom: calc(86px + var(--safe-bottom)); width: 88px; height: 88px; border-color: rgba(93,107,117,0.9); }
+
+  @media (hover: none) and (pointer: coarse) {
+    .hint .kbdline { display: none; }
+    #stage {
+      align-items: flex-start;
+      padding-top: calc(22px + env(safe-area-inset-top, 0px));
+      padding-left: clamp(8px, 2vw, 16px);
+      padding-right: clamp(8px, 2vw, 16px);
+      padding-bottom: calc(260px + env(safe-area-inset-bottom, 0px));
+    }
+    #stage::after {
+      top: calc(6px + env(safe-area-inset-top, 0px));
+      font-size: 8px;
+      letter-spacing: 0.24em;
+      opacity: 0.74;
+    }
+    canvas {
+      width: min(100%, 960px);
+      max-height: calc(100vh - 296px - env(safe-area-inset-bottom, 0px));
+      border-width: 3px;
+      border-radius: 14px;
+    }
+  }
+
+  @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+    #stage {
+      align-items: center;
+      padding: calc(12px + env(safe-area-inset-top, 0px)) clamp(10px, 2vw, 18px) calc(128px + env(safe-area-inset-bottom, 0px));
+    }
+    #touch.active::before { height: 118px; border-radius: 22px; }
+    #touch.active::after { bottom: calc(14px + var(--safe-bottom)); }
+    .tbtn { width: 72px; height: 72px; border-radius: 20px; font-size: 24px; }
+    #t-left  { left: clamp(18px, 5vw, 42px);  bottom: calc(28px + var(--safe-bottom)); }
+    #t-right { left: clamp(100px, 18vw, 132px); bottom: calc(28px + var(--safe-bottom)); }
+    #t-grap  { right: clamp(18px, 5vw, 42px); bottom: calc(56px + var(--safe-bottom)); width: 82px; height: 82px; }
+    #t-boost { right: clamp(110px, 18vw, 142px); bottom: calc(24px + var(--safe-bottom)); width: 82px; height: 82px; }
+    #t-act   { right: clamp(202px, 32vw, 250px); bottom: calc(24px + var(--safe-bottom)); width: 72px; height: 72px; }
+    canvas { max-height: calc(100vh - 150px - env(safe-area-inset-bottom, 0px)); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="game" width="960" height="540"></canvas>
+
+  <!-- ============================================================
+       SCREEN: TITLE
+       ============================================================ -->
+  <div class="screen active" id="screen-title">
+    <div class="eyebrow">Reintegration Core · Field Engineering Tasks</div>
+    <div class="title">ANCHOR <span class="glitch">RUN</span></div>
+    <div class="subtitle">
+      A broken AI process optimized this access corridor into ruins.
+      The ladders failed. The route did not.
+    </div>
+    <div class="worldline">
+      The ladders are broken. The route is not.<br>Eli just has to find another way through.
+    </div>
+    <button class="btn" id="btn-start">Begin Run</button>
+    <div class="hint">
+      <span class="kbdline">
+        <kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> move &nbsp;·&nbsp;
+        <kbd>Space</kbd> grapple &nbsp;·&nbsp; <kbd>Shift</kbd> boost &nbsp;·&nbsp;
+        <kbd>J</kbd> interact<br>
+      </span>
+      Eli cannot jump. Eli is not a platform hero. Eli is a field operator.
+    </div>
+  </div>
+
+  <!-- ============================================================
+       SCREEN: PAUSED
+       ============================================================ -->
+  <div class="screen" id="screen-paused">
+    <div class="eyebrow">System Paused</div>
+    <div class="title" style="font-size:clamp(28px,6vw,48px)">STANDBY</div>
+    <button class="btn" id="btn-resume">Resume</button>
+    <div class="hint"><kbd>Esc</kbd> to resume</div>
+  </div>
+
+  <!-- ============================================================
+       SCREEN: COMPLETE
+       ============================================================ -->
+  <div class="screen complete" id="screen-complete">
+    <div class="eyebrow" id="complete-eyebrow">Route Restored</div>
+    <div class="title" id="complete-title" style="font-size:clamp(30px,7vw,56px)">ACCESS<br>STABILIZED</div>
+    <div class="subtitle" id="complete-stats">Terminal stabilized. Access point reached without jumping.</div>
+    <button class="btn" id="btn-replay">Next Sector</button>
+  </div>
+
+  <!-- ============================================================
+       TOUCH CONTROLS
+       ============================================================ -->
+  <div id="touch">
+    <div class="tbtn" id="t-left">◀</div>
+    <div class="tbtn" id="t-right">▶</div>
+    <div class="tbtn" id="t-grap">⊕<br><small>GRAP</small></div>
+    <div class="tbtn" id="t-boost">▲<br><small>BOOST</small></div>
+    <div class="tbtn" id="t-act">A<br><small>ACT</small></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     SCRIPT
+     Single-file build. Sections map to the planned module split:
+       [DATA]      -> /src/data.js
+       [TOOLS]     -> /src/tools.js
+       [INPUT]     -> /src/input.js
+       [STATE]     -> /src/gameState.js
+       [PLAYER]    -> /src/player.js
+       [ANCHORRUN] -> /src/minigames/anchorRun.js
+       [UI]        -> /src/ui.js
+       [SCENES]    -> /src/scenes.js
+       [MAIN]      -> /src/main.js
+     ============================================================ -->
+<script>
+"use strict";
+(function () {
+
+/* =============================================================
+   [DATA]  Constants, level definition, palette
+   ============================================================= */
+const COLORS = {
+  bg:'#07090a', concrete:'#1a1f24', concrete2:'#232a30',
+  strain:'#c2453a', amber:'#f0a13a', signal:'#3ad6c2',
+  ink:'#cdd6dd', inkDim:'#5d6b75', line:'#2c343b',
+  shadow:'#050708', deep:'#0b1115', panel:'#10171d', panel2:'#151e25',
+  steel:'#37454f', dust:'#89949c', warning:'#f06f4f'
+};
+
+const WORLD = { w: 960, h: 540, gravity: 0.6, terminalVel: 14 };
+
+// ---- Level pool ----
+// 10 hand-built Anchor Run corridors. Origin top-left, y grows downward.
+// Every level holds the required slice contents: start platform,
+// broken-ladder storytelling, fixed anchors, recharge station(s),
+// route terminal(s), completion zone.
+//
+// FLOORS & STRAIN PITS:
+// The corridor floor sits at y:524 but is segmented — the broken AI process
+// collapsed sections of it. Solid floor segments live in `platforms` and DO
+// collide. The collapsed gaps are listed in `strainPits` and are VISUAL HAZARDS
+// ONLY: they are never added to LEVEL.platforms, never collide, and let Eli
+// fall through. Falling into a Strain Pit triggers a system strain recovery
+// (recover to spawn, restore boost). This is not death.
+const LEVELS = [
+  // 01 — Vertical Access Corridor
+  {
+    name:'VERTICAL ACCESS CORRIDOR',
+    spawn:{x:70,y:430},
+    platforms:[
+      {x:0,y:470,w:230,h:70},{x:300,y:392,w:150,h:22},{x:540,y:320,w:140,h:22},
+      {x:360,y:220,w:120,h:22},{x:720,y:150,w:240,h:26},
+      // segmented floor with one collapsed gap mid-corridor
+      {x:0,y:524,w:430,h:16},{x:560,y:524,w:400,h:16}
+    ],
+    strainPits:[{x:430,y:524,w:130,h:16}],
+    brokenLadders:[{x:250,y:300,w:26,h:170},{x:690,y:176,w:26,h:120}],
+    anchors:[{x:300,y:300,r:9},{x:520,y:200,r:9},{x:700,y:110,r:9}],
+    rechargeStations:[{x:600,y:288,w:30,h:32}],
+    routeTerminals:[{x:800,y:100,w:34,h:50}],
+    completionZone:{x:880,y:96,w:60,h:54}
+  },
+  // 02 — Switchback Riser
+  {
+    name:'SWITCHBACK RISER',
+    spawn:{x:60,y:430},
+    platforms:[
+      {x:0,y:470,w:180,h:70},{x:600,y:430,w:200,h:22},{x:120,y:350,w:180,h:22},
+      {x:660,y:280,w:180,h:22},{x:160,y:200,w:160,h:22},{x:640,y:140,w:260,h:26},
+      {x:0,y:524,w:360,h:16},{x:520,y:524,w:440,h:16}
+    ],
+    strainPits:[{x:360,y:524,w:160,h:16}],
+    brokenLadders:[{x:300,y:230,w:26,h:240}],
+    anchors:[{x:430,y:380,r:9},{x:480,y:250,r:9},{x:520,y:170,r:9}],
+    rechargeStations:[{x:700,y:398,w:30,h:32}],
+    routeTerminals:[{x:760,y:90,w:34,h:50}],
+    completionZone:{x:840,y:86,w:60,h:54}
+  },
+  // 03 — The Long Gap (the central chasm is itself a wide strain pit)
+  {
+    name:'THE LONG GAP',
+    spawn:{x:50,y:410},
+    platforms:[
+      {x:0,y:450,w:240,h:90},{x:720,y:450,w:240,h:90},{x:430,y:300,w:120,h:22},
+      {x:380,y:160,w:220,h:24},
+      {x:0,y:524,w:240,h:16},{x:720,y:524,w:240,h:16}
+    ],
+    strainPits:[{x:240,y:524,w:480,h:16}],
+    brokenLadders:[{x:230,y:300,w:26,h:150},{x:704,y:300,w:26,h:150}],
+    anchors:[{x:350,y:330,r:9},{x:490,y:210,r:9},{x:610,y:300,r:9}],
+    rechargeStations:[{x:470,y:268,w:30,h:32}],
+    routeTerminals:[{x:470,y:108,w:34,h:50}],
+    completionZone:{x:430,y:104,w:62,h:54}
+  },
+  // 04 — Collapsed Stack
+  {
+    name:'COLLAPSED STACK',
+    spawn:{x:70,y:150},
+    platforms:[
+      {x:0,y:190,w:200,h:22},{x:300,y:280,w:140,h:22},{x:120,y:370,w:150,h:22},
+      {x:420,y:430,w:180,h:22},{x:700,y:330,w:180,h:22},{x:720,y:180,w:240,h:26},
+      {x:0,y:524,w:300,h:16},{x:420,y:524,w:160,h:16},{x:700,y:524,w:260,h:16}
+    ],
+    strainPits:[{x:300,y:524,w:120,h:16},{x:580,y:524,w:120,h:16}],
+    brokenLadders:[{x:200,y:190,w:26,h:280},{x:600,y:180,w:26,h:250}],
+    anchors:[{x:260,y:230,r:9},{x:540,y:360,r:9},{x:700,y:240,r:9}],
+    rechargeStations:[{x:500,y:398,w:30,h:32}],
+    routeTerminals:[{x:800,y:130,w:34,h:50}],
+    completionZone:{x:880,y:126,w:60,h:54}
+  },
+  // 05 — Twin Spires
+  {
+    name:'TWIN SPIRES',
+    spawn:{x:60,y:430},
+    platforms:[
+      {x:0,y:470,w:200,h:70},{x:120,y:330,w:120,h:22},{x:80,y:190,w:140,h:22},
+      {x:740,y:330,w:160,h:22},{x:720,y:170,w:240,h:26},
+      {x:0,y:524,w:300,h:16},{x:660,y:524,w:300,h:16}
+    ],
+    strainPits:[{x:300,y:524,w:360,h:16}],
+    brokenLadders:[{x:200,y:190,w:26,h:280},{x:720,y:170,w:26,h:160}],
+    anchors:[{x:300,y:250,r:9},{x:480,y:150,r:9},{x:660,y:250,r:9}],
+    rechargeStations:[{x:150,y:158,w:30,h:32}],
+    routeTerminals:[{x:800,y:120,w:34,h:50}],
+    completionZone:{x:880,y:116,w:60,h:54}
+  },
+  // 06 — Low Road
+  {
+    name:'THE LOW ROAD',
+    spawn:{x:50,y:450},
+    platforms:[
+      {x:0,y:490,w:160,h:50},{x:260,y:470,w:120,h:22},{x:470,y:440,w:120,h:22},
+      {x:680,y:410,w:120,h:22},{x:820,y:300,w:140,h:22},
+      {x:0,y:524,w:220,h:16},{x:380,y:524,w:160,h:16},{x:640,y:524,w:320,h:16}
+    ],
+    strainPits:[{x:220,y:524,w:160,h:16},{x:540,y:524,w:100,h:16}],
+    brokenLadders:[{x:160,y:300,w:26,h:190}],
+    anchors:[{x:220,y:380,r:9},{x:430,y:360,r:9},{x:640,y:340,r:9},{x:840,y:240,r:9}],
+    rechargeStations:[{x:500,y:408,w:30,h:32}],
+    routeTerminals:[{x:880,y:250,w:34,h:50}],
+    completionZone:{x:830,y:250,w:50,h:50}
+  },
+  // 07 — Atrium Drop
+  {
+    name:'ATRIUM DROP',
+    spawn:{x:80,y:130},
+    platforms:[
+      {x:0,y:170,w:220,h:22},{x:380,y:230,w:140,h:22},{x:640,y:300,w:160,h:22},
+      {x:740,y:440,w:220,h:22},
+      {x:0,y:524,w:340,h:16},{x:540,y:524,w:420,h:16}
+    ],
+    strainPits:[{x:340,y:524,w:200,h:16}],
+    brokenLadders:[{x:220,y:170,w:26,h:300},{x:800,y:322,w:26,h:120}],
+    anchors:[{x:300,y:200,r:9},{x:540,y:260,r:9},{x:720,y:340,r:9}],
+    rechargeStations:[{x:430,y:198,w:30,h:32}],
+    routeTerminals:[{x:840,y:390,w:34,h:50}],
+    completionZone:{x:790,y:390,w:50,h:50}
+  },
+  // 08 — Narrow Climb (two terminals required)
+  {
+    name:'NARROW CLIMB',
+    spawn:{x:60,y:450},
+    platforms:[
+      {x:0,y:490,w:200,h:50},{x:380,y:420,w:140,h:22},{x:160,y:330,w:140,h:22},
+      {x:440,y:250,w:140,h:22},{x:680,y:170,w:280,h:26},
+      {x:0,y:524,w:300,h:16},{x:480,y:524,w:480,h:16}
+    ],
+    strainPits:[{x:300,y:524,w:180,h:16}],
+    brokenLadders:[{x:300,y:250,w:26,h:240}],
+    anchors:[{x:330,y:380,r:9},{x:380,y:300,r:9},{x:560,y:210,r:9}],
+    rechargeStations:[{x:480,y:218,w:30,h:32}],
+    routeTerminals:[{x:230,y:280,w:30,h:46},{x:780,y:120,w:34,h:50}],
+    completionZone:{x:880,y:116,w:70,h:54}
+  },
+  // 09 — Cantilever
+  {
+    name:'CANTILEVER',
+    spawn:{x:50,y:430},
+    platforms:[
+      {x:0,y:470,w:180,h:70},{x:420,y:380,w:110,h:22},{x:760,y:300,w:200,h:22},
+      {x:300,y:200,w:120,h:22},{x:640,y:130,w:220,h:24},
+      {x:0,y:524,w:260,h:16},{x:500,y:524,w:180,h:16},{x:820,y:524,w:140,h:16}
+    ],
+    strainPits:[{x:260,y:524,w:240,h:16},{x:680,y:524,w:140,h:16}],
+    brokenLadders:[{x:180,y:200,w:26,h:270}],
+    anchors:[{x:300,y:360,r:9},{x:560,y:300,r:9},{x:480,y:180,r:9},{x:660,y:120,r:9}],
+    rechargeStations:[{x:830,y:268,w:30,h:32}],
+    routeTerminals:[{x:740,y:80,w:34,h:50}],
+    completionZone:{x:820,y:76,w:60,h:54}
+  },
+  // 10 — The Spillway
+  {
+    name:'THE SPILLWAY',
+    spawn:{x:60,y:450},
+    platforms:[
+      {x:0,y:490,w:200,h:50},{x:300,y:410,w:120,h:22},{x:540,y:340,w:120,h:22},
+      {x:760,y:270,w:200,h:22},{x:240,y:200,w:160,h:22},{x:540,y:140,w:420,h:24},
+      {x:0,y:524,w:280,h:16},{x:440,y:524,w:200,h:16},{x:780,y:524,w:180,h:16}
+    ],
+    strainPits:[{x:280,y:524,w:160,h:16},{x:640,y:524,w:140,h:16}],
+    brokenLadders:[{x:200,y:300,w:26,h:190},{x:420,y:140,w:26,h:200}],
+    anchors:[{x:250,y:360,r:9},{x:480,y:300,r:9},{x:660,y:230,r:9},{x:460,y:160,r:9}],
+    rechargeStations:[{x:600,y:308,w:30,h:32}],
+    routeTerminals:[{x:880,y:90,w:34,h:50}],
+    completionZone:{x:560,y:86,w:70,h:54}
+  }
+];
+
+// ---- No-repeat shuffle-bag picker ----
+// Tracks used indices for the session. When all 10 are consumed, the bag
+// reshuffles so play continues without immediate repeats.
+const LevelBag = {
+  used: [],
+  current: -1,
+  next(){
+    if (this.used.length >= LEVELS.length) this.used = [];
+    const pool = [];
+    for (let i=0;i<LEVELS.length;i++) if (this.used.indexOf(i)===-1) pool.push(i);
+    const pick = pool[Math.floor(Math.random()*pool.length)];
+    this.used.push(pick);
+    this.current = pick;
+    return pick;
+  }
+};
+
+// Deep-copy a level template into the live LEVEL object so per-run flags
+// (terminal.stabilized) never leak back into the pool.
+function loadLevel(index){
+  // defensive: clamp index into range and fall back to level 0 on bad input
+  let i = (typeof index === 'number' && index >= 0 && index < LEVELS.length) ? index : 0;
+  const src = LEVELS[i] || LEVELS[0];
+  LEVEL = JSON.parse(JSON.stringify(src));
+  // Backfill every array the rest of the code iterates, so a level missing a
+  // field renders/updates harmlessly instead of throwing on .forEach/.length.
+  LEVEL.platforms        = Array.isArray(LEVEL.platforms) ? LEVEL.platforms : [];
+  LEVEL.strainPits       = Array.isArray(LEVEL.strainPits) ? LEVEL.strainPits : [];
+  LEVEL.brokenLadders    = Array.isArray(LEVEL.brokenLadders) ? LEVEL.brokenLadders : [];
+  LEVEL.anchors          = Array.isArray(LEVEL.anchors) ? LEVEL.anchors : [];
+  LEVEL.rechargeStations = Array.isArray(LEVEL.rechargeStations) ? LEVEL.rechargeStations : [];
+  LEVEL.routeTerminals   = Array.isArray(LEVEL.routeTerminals) ? LEVEL.routeTerminals : [];
+  if (!LEVEL.spawn || typeof LEVEL.spawn.x !== 'number') LEVEL.spawn = { x: 60, y: 400 };
+  if (!LEVEL.completionZone) LEVEL.completionZone = { x: WORLD.w-60, y: 90, w: 50, h: 50 };
+  LEVEL.routeTerminals.forEach(t => t.stabilized = false);
+  // Falling below this line counts as system strain and recovers Eli to spawn.
+  LEVEL.strainResetY = WORLD.h + 30;
+}
+
+// Active level. Populated by loadLevel(); referenced everywhere below.
+let LEVEL = null;
+
+/* =============================================================
+   [TOOLS]  Reusable tool model (shared across future mini-games)
+   ============================================================= */
+const tools = {
+  grapple:   { id:'grapple',   name:'Grappling Hook', energyCost:0,  cooldown:300, enabled:true },
+  booster:   { id:'booster',   name:'Booster Pack',   energyCost:18, cooldown:0,   enabled:true }, // cooldown unused: energy drain + velocity cap are the throttles
+  scanner:   { id:'scanner',   name:'Route Scanner',  energyCost:10, cooldown:400, enabled:false },
+  diagnosticPulse:{ id:'diagnosticPulse', name:'Diagnostic Pulse', energyCost:20, cooldown:700, enabled:false },
+  relayTrace:{ id:'relayTrace',name:'Relay Trace',    energyCost:10, cooldown:500, enabled:false },
+  stabilizer:{ id:'stabilizer',name:'Stabilizer',     energyCost:0,  cooldown:300, enabled:true },
+};
+const toolCooldowns = {}; // id -> timestamp ready
+
+function toolReady(id, now){ return now >= (toolCooldowns[id] || 0); }
+function fireTool(id, now){ toolCooldowns[id] = now + tools[id].cooldown; }
+
+/* =============================================================
+   [INPUT]  Keyboard + touch -> action booleans
+   ============================================================= */
+const input = {
+  left:false, right:false, grapple:false, boost:false,
+  interact:false, _grapEdge:false, _interactEdge:false
+};
+
+const KEYMAP = {
+  'arrowleft':'left','a':'left',
+  'arrowright':'right','d':'right',
+  ' ':'grapple',
+  'shift':'boost',
+  'j':'interact','enter':'interact'
+};
+
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { Scenes.togglePause(); return; }
+  const a = KEYMAP[k];
+  if (a) {
+    if (a === 'grapple' && !input.grapple) input._grapEdge = true;
+    if (a === 'interact' && !input.interact) input._interactEdge = true;
+    input[a] = true;
+    if (a==='grapple'||a==='boost') e.preventDefault();
+  }
+});
+window.addEventListener('keyup', e => {
+  const a = KEYMAP[e.key.toLowerCase()];
+  if (a) input[a] = false;
+});
+
+// Release every held input and clear pending edges. Called on focus loss,
+// tab switch, and pause so keys/buttons can't get "stuck" down across a gap
+// in the event stream (a common cause of Eli drifting after Alt-Tab).
+function releaseAllInputs(){
+  input.left = input.right = input.grapple = input.boost = input.interact = false;
+  input._grapEdge = input._interactEdge = false;
+}
+window.addEventListener('blur', releaseAllInputs);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) releaseAllInputs();
+});
+
+function bindTouch(id, action) {
+  const el = document.getElementById(id);
+  if (!el) return; // defensive: missing control must not abort init
+  const set = (v) => () => {
+    if (action==='grapple' && v && !input.grapple) input._grapEdge = true;
+    if (action==='interact' && v && !input.interact) input._interactEdge = true;
+    input[action] = v;
+  };
+  ['touchstart','mousedown'].forEach(ev => el.addEventListener(ev, e=>{e.preventDefault();set(true)();},{passive:false}));
+  ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev => el.addEventListener(ev, e=>{e.preventDefault();set(false)();},{passive:false}));
+}
+bindTouch('t-left','left'); bindTouch('t-right','right');
+bindTouch('t-grap','grapple'); bindTouch('t-boost','boost');
+bindTouch('t-act','interact');
+
+function consumeEdge(name){
+  if (name==='grapple'){ const v=input._grapEdge; input._grapEdge=false; return v; }
+  if (name==='interact'){ const v=input._interactEdge; input._interactEdge=false; return v; }
+  return false;
+}
+
+/* =============================================================
+   [STATE]  Game state machine
+   ============================================================= */
+const STATE = { BOOT:'BOOT', TITLE:'TITLE', PLAYING:'PLAYING', PAUSED:'PAUSED', COMPLETE:'COMPLETE' };
+const Game = {
+  state: STATE.TITLE,
+  boost: 100, maxBoost: 100,
+  objective: 'Stabilize the route terminal',
+  terminalsStabilized: 0,
+  startTime: 0,
+  strainEvents: 0,
+  // a "run" is RUN_LENGTH random no-repeat levels in a row
+  runLength: 3,
+  runIndex: 0,        // which level of the current run (0-based)
+  runTotalSecs: 0,    // accumulated time across the run
+  runStrain: 0,       // accumulated strain across the run
+};
+
+/* =============================================================
+   [PLAYER]  Eli — grounded field operator. NO JUMP.
+   ============================================================= */
+const player = {
+  x:0, y:0, w:24, h:34,
+  vx:0, vy:0,
+  speed:2.6, accel:0.5, friction:0.78,
+  grounded:false,
+  // grapple
+  grappling:false, grapTarget:null, grapProgress:0,
+  facing:1
+};
+
+function resetPlayer(){
+  player.x = LEVEL.spawn.x; player.y = LEVEL.spawn.y;
+  player.vx = 0; player.vy = 0;
+  player.grappling = false; player.grapTarget = null;
+  Game.boost = Game.maxBoost;
+}
+
+/* =============================================================
+   [ANCHORRUN]  Mini-game logic: physics, grapple, boost, interact
+   ============================================================= */
+const AnchorRun = {};
+
+AnchorRun.start = function(){
+  // pull a fresh unused level from the no-repeat bag
+  loadLevel(LevelBag.next());
+  Game.terminalsStabilized = 0;
+  Game.strainEvents = 0;
+  Game.startTime = performance.now();
+  resetPlayer();
+};
+
+function rectsOverlap(a, b){
+  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+}
+function nearestAnchor(px, py, maxDist){
+  let best=null, bd=maxDist*maxDist;
+  for (const an of LEVEL.anchors){
+    const dx=an.x-px, dy=an.y-py, d=dx*dx+dy*dy;
+    if (d < bd){ bd=d; best=an; }
+  }
+  return best;
+}
+
+AnchorRun.update = function(now, dt){
+  const p = player;
+
+  // ---- horizontal movement ----
+  if (input.left)  { p.vx -= p.accel; p.facing=-1; }
+  if (input.right) { p.vx += p.accel; p.facing=1; }
+  if (!input.left && !input.right) p.vx *= p.friction;
+  p.vx = Math.max(-p.speed, Math.min(p.speed, p.vx));
+
+  // ---- GRAPPLE: only to fixed anchors. Pulls Eli toward anchor. ----
+  if (consumeEdge('grapple') && !p.grappling && toolReady('grapple', now)){
+    const cx = p.x + p.w/2, cy = p.y + p.h/2;
+    const an = nearestAnchor(cx, cy, 260);
+    if (an){
+      p.grappling = true; p.grapTarget = an;
+      fireTool('grapple', now);
+    }
+  }
+  if (p.grappling && p.grapTarget){
+    const cx = p.x + p.w/2, cy = p.y + p.h/2;
+    const dx = p.grapTarget.x - cx, dy = p.grapTarget.y - cy;
+    const dist = Math.hypot(dx, dy);
+    // Guard against division by zero / near-zero distance: if Eli is already
+    // on the anchor, skip the pull this frame and release. Prevents NaN velocity.
+    if (dist < 1){
+      p.grappling = false; p.grapTarget = null;
+    } else {
+      const pull = 0.55;
+      p.vx += (dx/dist) * pull;
+      p.vy += (dy/dist) * pull;
+      p.vx = Math.max(-6, Math.min(6, p.vx));
+      p.vy = Math.max(-9, Math.min(9, p.vy));
+      // release on key release or arrival
+      if (!input.grapple || dist < 26){ p.grappling=false; p.grapTarget=null; }
+    }
+  }
+
+  // ---- BOOSTER PACK: short controlled vertical burst, limited energy ----
+  // NOT free flight. Two throttles keep it controlled:
+  //   1. energy gate  — drains Game.boost while held; empties fast, then no lift
+  //   2. velocity cap — upward vy clamped to -7, so it cannot accelerate away
+  // Thrust must apply EVERY held frame. A millisecond cooldown here is wrong:
+  // at 60Hz it blocks every other frame, so gravity (applied every frame) wins
+  // and Eli sinks while still burning energy. Energy + cap are the throttles.
+  if (input.boost && Game.boost > 0){
+    p.vy -= 0.85;                       // upward thrust each held frame
+    p.vy = Math.max(p.vy, -7);          // capped — cannot fly freely
+    Game.boost = Math.max(0, Game.boost - 0.9);
+  }
+
+  // ---- gravity (Eli cannot jump; only grapple/boost lift him) ----
+  if (!p.grappling){
+    p.vy += WORLD.gravity;
+    p.vy = Math.min(p.vy, WORLD.terminalVel);
+  }
+
+  // ---- integrate + collide ----
+  // horizontal
+  p.x += p.vx;
+  for (const pl of LEVEL.platforms){
+    if (rectsOverlap(p, pl)){
+      if (p.vx > 0) p.x = pl.x - p.w;
+      else if (p.vx < 0) p.x = pl.x + pl.w;
+      p.vx = 0;
+    }
+  }
+  // vertical
+  p.y += p.vy;
+  p.grounded = false;
+  for (const pl of LEVEL.platforms){
+    if (rectsOverlap(p, pl)){
+      if (p.vy > 0){ p.y = pl.y - p.h; p.grounded = true; }
+      else if (p.vy < 0){ p.y = pl.y + pl.h; }
+      p.vy = 0;
+    }
+  }
+
+  // ---- bounds / system strain (non-death reset) ----
+  if (p.x < 0) { p.x = 0; p.vx = 0; }
+  if (p.x + p.w > WORLD.w){ p.x = WORLD.w - p.w; p.vx = 0; }
+  if (p.y > LEVEL.strainResetY){
+    // Eli fell through a collapsed floor gap (Strain Pit). System strain:
+    // route simulation reset — recover to spawn, restore boost. Not death.
+    Game.strainEvents++;
+    resetPlayer();
+  }
+
+  // ---- finite-value guard ----
+  // If any physics value ever becomes NaN or Infinity (bad data, divide edge,
+  // overflow), recover to spawn rather than letting a corrupt value propagate
+  // through every subsequent frame and freeze Eli off-screen permanently.
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.y) ||
+      !Number.isFinite(p.vx) || !Number.isFinite(p.vy)){
+    resetPlayer();
+  }
+
+  // ---- passive boost trickle when grounded (small) ----
+  if (p.grounded && Game.boost < Game.maxBoost){
+    Game.boost = Math.min(Game.maxBoost, Game.boost + 0.05);
+  }
+
+  // ---- INTERACT (J / A): recharge + stabilize ----
+  const interacted = consumeEdge('interact');
+
+  // recharge stations
+  AnchorRun.nearRecharge = null;
+  for (const rs of LEVEL.rechargeStations){
+    if (rectsOverlap(p, {x:rs.x-12,y:rs.y-12,w:rs.w+24,h:rs.h+24})){
+      AnchorRun.nearRecharge = rs;
+      if (interacted){ Game.boost = Game.maxBoost; }
+    }
+  }
+  // route terminals
+  AnchorRun.nearTerminal = null;
+  for (const t of LEVEL.routeTerminals){
+    if (rectsOverlap(p, {x:t.x-14,y:t.y-14,w:t.w+28,h:t.h+28})){
+      AnchorRun.nearTerminal = t;
+      if (interacted && !t.stabilized){
+        t.stabilized = true;
+        Game.terminalsStabilized++;
+      }
+    }
+  }
+
+  // ---- completion: required terminal stabilized AND in completion zone ----
+  const required = LEVEL.routeTerminals.length;
+  if (Game.terminalsStabilized >= required && rectsOverlap(p, LEVEL.completionZone)){
+    Scenes.complete();
+  }
+};
+
+/* =============================================================
+   [UI]  HUD render (objective + boost/tool energy + prompts)
+   ============================================================= */
+const _canvas = document.getElementById('game');
+const ctx = _canvas && _canvas.getContext ? _canvas.getContext('2d') : null;
+if (!ctx) {
+  // Without a 2D context there is nothing to render to. Fail loudly but
+  // safely rather than throwing an opaque error deep in the first draw call.
+  if (typeof console !== 'undefined' && console.error) {
+    console.error('Anchor Run: canvas #game or its 2D context is unavailable.');
+  }
+  return;
+}
+
+
+function drawFacilityBackdrop(){
+  // Ruined access layer: far wall panels, inactive service runs, and broken route signage.
+  const g = ctx.createLinearGradient(0,0,0,WORLD.h);
+  g.addColorStop(0, '#0d1519');
+  g.addColorStop(0.46, '#0a0f12');
+  g.addColorStop(1, '#060809');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,WORLD.w,WORLD.h);
+
+  // distant wall panels
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  for (let x = -20; x < WORLD.w + 80; x += 120){
+    const y = 56 + ((x / 120) % 2) * 18;
+    ctx.fillStyle = x % 240 === 0 ? COLORS.deep : COLORS.panel;
+    ctx.fillRect(x, y, 96, WORLD.h - y - 58);
+    ctx.strokeStyle = 'rgba(44,52,59,0.62)';
+    ctx.strokeRect(x+0.5, y+0.5, 95, WORLD.h - y - 59);
+    ctx.strokeStyle = 'rgba(137,148,156,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(x+14, y+18); ctx.lineTo(x+14, WORLD.h-70);
+    ctx.moveTo(x+82, y+18); ctx.lineTo(x+82, WORLD.h-70);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // shadowed vertical shafts
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  for (let x = 34; x < WORLD.w; x += 226){
+    ctx.fillRect(x, 40, 24, WORLD.h - 84);
+    ctx.fillStyle = 'rgba(58,214,194,0.035)';
+    ctx.fillRect(x+7, 80, 3, WORLD.h - 164);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  }
+
+  // inactive route conduits; thin and low contrast so they do not compete with play objects.
+  ctx.strokeStyle = 'rgba(93,107,117,0.22)';
+  ctx.lineWidth = 2;
+  for (let y = 86; y < WORLD.h; y += 78){
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= WORLD.w; x += 80){
+      ctx.lineTo(x + 36, y + ((x/80)%2 ? -5 : 5));
+      ctx.lineTo(x + 80, y);
+    }
+    ctx.stroke();
+  }
+
+  // distant broken ladder silhouettes — background only, no affordance.
+  for (let x = 118; x < WORLD.w; x += 260){
+    drawBackgroundLadder(x, 112 + (x % 3) * 16, 220, 0.18);
+  }
+
+  // route signage bands
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(93,107,117,0.42)';
+  ctx.fillText('ACCESS LAYER // ROUTE MAP DEGRADED', 20, 64);
+  ctx.fillText('LADDER NETWORK OFFLINE · ANCHOR ROUTE AVAILABLE', WORLD.w - 340, WORLD.h - 58);
+
+  // subtle scanlines / grid hash
+  ctx.strokeStyle = 'rgba(44,52,59,0.22)';
+  ctx.lineWidth = 1;
+  for (let x=0; x<WORLD.w; x+=48){
+    ctx.beginPath(); ctx.moveTo(x,40); ctx.lineTo(x,WORLD.h); ctx.stroke();
+  }
+  for (let y=80; y<WORLD.h; y+=48){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(WORLD.w,y); ctx.stroke();
+  }
+}
+
+function drawBackgroundLadder(x, y, h, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = COLORS.inkDim;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x, y + h);
+  ctx.moveTo(x + 22, y + 18); ctx.lineTo(x + 22, y + h * 0.55);
+  ctx.stroke();
+  for (let i = 0; i < 8; i++){
+    if (i === 3 || i === 6) continue;
+    const ry = y + 18 + i * 24;
+    ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x + 22, ry + (i === 5 ? 8 : 0)); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPlatform(pl){
+  ctx.save();
+  // under-shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.36)';
+  ctx.fillRect(pl.x + 4, pl.y + pl.h, pl.w, 8);
+
+  // concrete slab body
+  const grad = ctx.createLinearGradient(0, pl.y, 0, pl.y + pl.h);
+  grad.addColorStop(0, COLORS.concrete2);
+  grad.addColorStop(0.22, '#20272d');
+  grad.addColorStop(1, COLORS.concrete);
+  ctx.fillStyle = grad;
+  ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
+
+  // bevels and structural lip
+  ctx.fillStyle = 'rgba(137,148,156,0.14)';
+  ctx.fillRect(pl.x, pl.y, pl.w, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(pl.x, pl.y + pl.h - 4, pl.w, 4);
+  ctx.strokeStyle = COLORS.line;
+  ctx.strokeRect(pl.x+0.5, pl.y+0.5, pl.w-1, pl.h-1);
+
+  // panel seams
+  ctx.strokeStyle = 'rgba(137,148,156,0.12)';
+  ctx.lineWidth = 1;
+  for (let sx = pl.x + 42; sx < pl.x + pl.w - 12; sx += 54){
+    ctx.beginPath(); ctx.moveTo(sx, pl.y + 4); ctx.lineTo(sx, pl.y + pl.h - 5); ctx.stroke();
+  }
+
+  // bolts, deterministic based on slab position
+  ctx.fillStyle = 'rgba(137,148,156,0.42)';
+  for (let bx = pl.x + 12; bx < pl.x + pl.w - 8; bx += 52){
+    ctx.fillRect(bx, pl.y + 6, 2, 2);
+    if (pl.h > 18) ctx.fillRect(bx + 18, pl.y + pl.h - 9, 2, 2);
+  }
+
+  // cracks / chipped surface; deterministic, non-random during play
+  ctx.strokeStyle = 'rgba(5,7,8,0.58)';
+  ctx.lineWidth = 1;
+  const crackCount = Math.max(1, Math.floor(pl.w / 140));
+  for (let i=0; i<crackCount; i++){
+    const seed = (pl.x * 0.013 + pl.y * 0.021 + i * 1.7);
+    const cx = pl.x + 20 + ((Math.abs(Math.sin(seed)) * (pl.w - 42)) || 0);
+    const cy = pl.y + 7 + (Math.abs(Math.cos(seed)) * Math.max(4, pl.h - 15));
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + 9, cy + 3);
+    ctx.lineTo(cx + 15, cy - 2);
+    if (pl.w > 120) ctx.lineTo(cx + 24, cy + 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHUD(){
+  // top diagnostic band
+  ctx.save();
+  ctx.fillStyle = 'rgba(7,9,10,0.82)';
+  ctx.fillRect(0, 0, WORLD.w, 52);
+  ctx.fillStyle = 'rgba(16,23,29,0.96)';
+  ctx.fillRect(0, 40, WORLD.w, 12);
+  ctx.strokeStyle = COLORS.line;
+  ctx.beginPath(); ctx.moveTo(0, 52.5); ctx.lineTo(WORLD.w, 52.5); ctx.stroke();
+
+  const required = LEVEL.routeTerminals.length;
+  const objText = Game.terminalsStabilized >= required
+    ? 'Reach restored access hatch'
+    : Game.objective;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+
+  ctx.font = '9px monospace';
+  ctx.fillStyle = COLORS.inkDim;
+  ctx.fillText('FIELD OBJECTIVE', 16, 12);
+  ctx.font = '13px monospace';
+  ctx.fillStyle = COLORS.ink;
+  ctx.fillText('▸ ' + objText, 16, 30);
+
+  // center sector / terminal status block
+  ctx.textAlign = 'center';
+  ctx.font = '9px monospace';
+  ctx.fillStyle = COLORS.inkDim;
+  ctx.fillText('ACCESS LAYER STATUS', WORLD.w/2, 12);
+  ctx.font = '12px monospace';
+  const termCol = Game.terminalsStabilized >= required ? COLORS.signal : COLORS.amber;
+  ctx.fillStyle = termCol;
+  ctx.fillText('TERMINALS ' + Game.terminalsStabilized + '/' + required + '  ·  SECTOR ' +
+    (Game.runIndex+1) + '/' + Game.runLength, WORLD.w/2, 30);
+
+  // boost / energy meter (right)
+  const mx = WORLD.w - 214, my = 21, mw = 170, mh = 14;
+  const pct = Game.boost / Game.maxBoost;
+  ctx.textAlign = 'right';
+  ctx.font = '9px monospace';
+  ctx.fillStyle = COLORS.inkDim;
+  ctx.fillText('BOOST ' + Math.round(pct*100) + '%', WORLD.w - 16, 12);
+  ctx.fillStyle = 'rgba(5,7,8,0.85)';
+  ctx.fillRect(mx, my, mw, mh);
+  ctx.strokeStyle = pct > 0.3 ? COLORS.signal : COLORS.strain;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx+0.5, my+0.5, mw-1, mh-1);
+  ctx.fillStyle = pct > 0.3 ? COLORS.signal : COLORS.strain;
+  ctx.fillRect(mx+2, my+2, Math.max(0, (mw-4)*pct), mh-4);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(mx+2, my+2, Math.max(0, (mw-4)*pct), 2);
+
+  // compact lower tool / state band
+  ctx.fillStyle = 'rgba(7,9,10,0.56)';
+  ctx.fillRect(0, WORLD.h - 28, WORLD.w, 28);
+  ctx.strokeStyle = 'rgba(44,52,59,0.9)';
+  ctx.beginPath(); ctx.moveTo(0, WORLD.h - 28.5); ctx.lineTo(WORLD.w, WORLD.h - 28.5); ctx.stroke();
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = COLORS.amber;
+  ctx.fillText('TOOLS: GRAPPLE · BOOST · STABILIZE', 16, WORLD.h - 13);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLORS.inkDim;
+  ctx.fillText((LEVEL.name||'—'), WORLD.w/2, WORLD.h - 13);
+  if (Game.strainEvents > 0){
+    ctx.textAlign = 'right';
+    ctx.fillStyle = COLORS.strain;
+    ctx.fillText('STRAIN EVENTS: ' + Game.strainEvents, WORLD.w - 16, WORLD.h - 13);
+  }
+
+  // contextual prompts
+  function prompt(obj, text, color){
+    if (!obj) return;
+    const px = obj.x + (obj.w||0)/2;
+    const py = obj.y - 16;
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(text).width + 18;
+    ctx.fillStyle = 'rgba(7,9,10,0.88)';
+    ctx.fillRect(px - w/2, py - 10, w, 20);
+    ctx.strokeStyle = color;
+    ctx.strokeRect(px - w/2 + 0.5, py - 10.5, w-1, 19);
+    ctx.fillStyle = color;
+    ctx.fillText(text, px, py);
+    ctx.textAlign = 'left';
+  }
+  prompt(AnchorRun.nearRecharge, 'Press J / A to Recharge', COLORS.signal);
+  if (AnchorRun.nearTerminal && !AnchorRun.nearTerminal.stabilized)
+    prompt(AnchorRun.nearTerminal, 'Press J / A to Stabilize', COLORS.amber);
+
+  // grapple-in-range cue
+  const cx = player.x + player.w/2, cy = player.y + player.h/2;
+  const an = nearestAnchor(cx, cy, 260);
+  if (an && !player.grappling){
+    prompt({x:an.x, y:an.y, w:0}, 'Space to Grapple', COLORS.amber);
+  }
+  ctx.restore();
+}
+
+/* =============================================================
+   [RENDER]  World draw
+   ============================================================= */
+function drawWorld(){
+  drawFacilityBackdrop();
+
+  // Strain Pits — collapsed floor gaps. Visual hazards only (no collision).
+  // Drawn before platforms so the broken concrete edges read clearly.
+  for (const pit of LEVEL.strainPits) drawStrainPit(pit);
+
+  // broken ladders — ENVIRONMENTAL STORYTELLING ONLY (no prompt, no collide)
+  for (const bl of LEVEL.brokenLadders) drawBrokenLadder(bl);
+
+  // platforms (concrete)
+  for (const pl of LEVEL.platforms) drawPlatform(pl);
+
+  // grapple anchors
+  for (const an of LEVEL.anchors) drawAnchor(an);
+
+  // recharge stations
+  for (const rs of LEVEL.rechargeStations) drawRecharge(rs);
+
+  // route terminals
+  for (const t of LEVEL.routeTerminals) drawTerminal(t);
+
+  // completion zone (only "live" once terminal stabilized)
+  drawCompletionZone();
+
+  // grapple line
+  if (player.grappling && player.grapTarget){
+    ctx.save();
+    ctx.strokeStyle = COLORS.amber;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = COLORS.amber;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(player.x+player.w/2, player.y+player.h/2);
+    ctx.lineTo(player.grapTarget.x, player.grapTarget.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // boost exhaust
+  if (input.boost && Game.boost > 0){
+    ctx.save();
+    const flame = 8 + Math.random()*8;
+    ctx.fillStyle = 'rgba(58,214,194,0.52)';
+    ctx.fillRect(player.x+5, player.y+player.h, 4, flame);
+    ctx.fillRect(player.x+player.w-9, player.y+player.h, 4, flame * 0.8);
+    ctx.fillStyle = 'rgba(240,161,58,0.38)';
+    ctx.fillRect(player.x+9, player.y+player.h+2, 6, flame * 0.55);
+    ctx.restore();
+  }
+
+  drawEli();
+}
+
+// Strain Pit — a collapsed floor gap. Visual hazard only; never collides.
+// Dark corrupted rupture, broken concrete edges, warning glow, faint static.
+function drawStrainPit(pit){
+  ctx.save();
+  const x = pit.x, w = pit.w, top = pit.y, bottom = WORLD.h;
+
+  // dark corrupted rupture filling the collapsed floor void
+  const rg = ctx.createLinearGradient(0, top, 0, bottom);
+  rg.addColorStop(0,   'rgba(42,10,12,0.96)');
+  rg.addColorStop(0.42,'rgba(92,18,18,0.9)');
+  rg.addColorStop(1,   'rgba(15,4,5,0.99)');
+  ctx.fillStyle = rg;
+  ctx.fillRect(x, top, w, bottom - top);
+
+  // corrupted vertical depth ribs
+  ctx.strokeStyle = 'rgba(5,7,8,0.5)';
+  ctx.lineWidth = 2;
+  for (let sx = x + 12; sx < x + w; sx += 24){
+    ctx.beginPath(); ctx.moveTo(sx, top + 3); ctx.lineTo(sx - 8, bottom); ctx.stroke();
+  }
+
+  // warning glow rising from rupture
+  const glow = ctx.createLinearGradient(0, top - 24, 0, top + 16);
+  glow.addColorStop(0, 'rgba(194,69,58,0)');
+  glow.addColorStop(1, 'rgba(194,69,58,0.34)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x, top - 24, w, 40);
+
+  // corruption flicker lines
+  ctx.strokeStyle = 'rgba(240,80,70,0.38)'; ctx.lineWidth = 1;
+  const t = performance.now() / 120;
+  for (let i = 0; i < Math.max(3, Math.floor(w / 18)); i++){
+    const sx = x + 6 + ((i * 17 + (t * 9 % 17)) % Math.max(10, w - 10));
+    const h = 8 + (Math.sin(t + i) + 1) * 9;
+    ctx.globalAlpha = 0.22 + 0.42 * Math.abs(Math.sin(t * 0.7 + i));
+    ctx.beginPath(); ctx.moveTo(sx, top + 4); ctx.lineTo(sx, top + 4 + h); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // broken concrete lips on both sides
+  ctx.strokeStyle = COLORS.strain;
+  ctx.lineWidth = 1.5;
+  function jaggedLip(edgeX, dir){
+    ctx.beginPath();
+    ctx.moveTo(edgeX, top);
+    const steps = 5, sh = 5;
+    for (let i = 0; i < steps; i++){
+      const yy = top + (i + 1) * sh;
+      const jut = dir * (3 + (i % 2) * 6);
+      ctx.lineTo(edgeX + jut, yy);
+    }
+    ctx.lineTo(edgeX, top + steps * sh + 4);
+    ctx.stroke();
+  }
+  jaggedLip(x, 1);
+  jaggedLip(x + w, -1);
+
+  // hazard chevrons + label along the pit mouth
+  ctx.strokeStyle = 'rgba(240,120,90,0.72)'; ctx.lineWidth = 2;
+  for (let cx2 = x + 6; cx2 < x + w - 14; cx2 += 26){
+    ctx.beginPath();
+    ctx.moveTo(cx2, top - 3); ctx.lineTo(cx2 + 8, top - 11); ctx.lineTo(cx2 + 16, top - 3);
+    ctx.stroke();
+  }
+  if (w >= 90){
+    ctx.fillStyle = 'rgba(240,120,90,0.78)';
+    ctx.font = '8px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('STRAIN PIT', x + w / 2, top - 16);
+  }
+  ctx.restore();
+}
+
+function drawBrokenLadder(bl){
+  ctx.save();
+  ctx.strokeStyle = 'rgba(93,107,117,0.5)';
+  ctx.lineWidth = 2;
+  // rails
+  ctx.beginPath();
+  ctx.moveTo(bl.x, bl.y); ctx.lineTo(bl.x, bl.y+bl.h);
+  ctx.moveTo(bl.x+bl.w, bl.y); ctx.lineTo(bl.x+bl.w, bl.y+bl.h*0.6); // rail snapped
+  ctx.stroke();
+  // broken rungs (some missing / hanging)
+  for (let i=0;i<7;i++){
+    const ry = bl.y + 14 + i*22;
+    if (ry > bl.y+bl.h) break;
+    if (i===2 || i===4) continue;            // missing rungs
+    ctx.beginPath();
+    if (i===5){ ctx.moveTo(bl.x, ry); ctx.lineTo(bl.x+bl.w*0.6, ry+6); } // hanging
+    else { ctx.moveTo(bl.x, ry); ctx.lineTo(bl.x+bl.w, ry); }
+    ctx.stroke();
+  }
+  // faint "OFFLINE" tag
+  ctx.fillStyle = 'rgba(194,69,58,0.55)';
+  ctx.font = '8px monospace';
+  ctx.save();
+  ctx.translate(bl.x-4, bl.y+bl.h*0.5);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('LADDER OFFLINE', 0, 0);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawAnchor(an){
+  const t = performance.now()/600;
+  ctx.save();
+  // mounted bracket so the ring reads as facility hardware, not a floating pickup
+  ctx.fillStyle = 'rgba(16,23,29,0.96)';
+  ctx.strokeStyle = COLORS.line;
+  ctx.lineWidth = 1;
+  ctx.fillRect(an.x-17, an.y-9, 34, 18);
+  ctx.strokeRect(an.x-17.5, an.y-9.5, 34, 18);
+  ctx.fillStyle = 'rgba(137,148,156,0.42)';
+  ctx.fillRect(an.x-13, an.y-5, 3, 3);
+  ctx.fillRect(an.x+10, an.y-5, 3, 3);
+  ctx.fillRect(an.x-13, an.y+3, 3, 3);
+  ctx.fillRect(an.x+10, an.y+3, 3, 3);
+
+  ctx.strokeStyle = COLORS.amber; ctx.lineWidth = 2;
+  ctx.shadowColor = COLORS.amber; ctx.shadowBlur = 5;
+  ctx.beginPath(); ctx.arc(an.x, an.y, an.r, 0, Math.PI*2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLORS.amber;
+  ctx.beginPath(); ctx.arc(an.x, an.y, 3, 0, Math.PI*2); ctx.fill();
+  // pulse ring
+  const pr = an.r + 4 + (Math.sin(t)+1)*3;
+  ctx.globalAlpha = 0.38 + 0.28*Math.sin(t);
+  ctx.beginPath(); ctx.arc(an.x, an.y, pr, 0, Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawRecharge(rs){
+  ctx.save();
+  // floor-anchored energy station with teal core
+  ctx.fillStyle = 'rgba(5,7,8,0.45)';
+  ctx.fillRect(rs.x-4, rs.y+rs.h, rs.w+8, 7);
+  ctx.fillStyle = COLORS.panel2;
+  ctx.fillRect(rs.x-2, rs.y-4, rs.w+4, rs.h+6);
+  ctx.strokeStyle = COLORS.line;
+  ctx.strokeRect(rs.x-2.5, rs.y-4.5, rs.w+4, rs.h+6);
+
+  const pulse = 0.5 + 0.5*Math.abs(Math.sin(performance.now()/300));
+  ctx.fillStyle = 'rgba(58,214,194,0.12)';
+  ctx.fillRect(rs.x+4, rs.y+4, rs.w-8, rs.h-8);
+  ctx.strokeStyle = COLORS.signal; ctx.lineWidth = 1.5;
+  ctx.shadowColor = COLORS.signal; ctx.shadowBlur = 8*pulse;
+  ctx.strokeRect(rs.x+3.5, rs.y+3.5, rs.w-7, rs.h-7);
+  ctx.shadowBlur = 0;
+
+  // energy glyph / charge bands
+  ctx.fillStyle = COLORS.signal;
+  ctx.globalAlpha = 0.58 + 0.38*pulse;
+  ctx.beginPath();
+  ctx.moveTo(rs.x+rs.w*0.58, rs.y+6);
+  ctx.lineTo(rs.x+rs.w*0.34, rs.y+rs.h*0.55);
+  ctx.lineTo(rs.x+rs.w*0.50, rs.y+rs.h*0.55);
+  ctx.lineTo(rs.x+rs.w*0.40, rs.y+rs.h-6);
+  ctx.lineTo(rs.x+rs.w*0.68, rs.y+rs.h*0.42);
+  ctx.lineTo(rs.x+rs.w*0.51, rs.y+rs.h*0.42);
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(58,214,194,0.5)';
+  ctx.fillRect(rs.x+6, rs.y+rs.h-6, rs.w-12, 2);
+  ctx.restore();
+}
+
+function drawTerminal(t){
+  ctx.save();
+  const col = t.stabilized ? COLORS.signal : COLORS.strain;
+  const label = t.stabilized ? 'STABLE' : 'CORRUPT';
+  // cabinet
+  ctx.fillStyle = COLORS.panel2;
+  ctx.fillRect(t.x-3, t.y-4, t.w+6, t.h+8);
+  ctx.strokeStyle = COLORS.line;
+  ctx.strokeRect(t.x-3.5, t.y-4.5, t.w+6, t.h+8);
+  ctx.fillStyle = COLORS.concrete2;
+  ctx.fillRect(t.x, t.y, t.w, t.h);
+  ctx.strokeStyle = col; ctx.lineWidth = 2;
+  ctx.shadowColor = col; ctx.shadowBlur = t.stabilized ? 6 : 3;
+  ctx.strokeRect(t.x+0.5, t.y+0.5, t.w-1, t.h-1);
+  ctx.shadowBlur = 0;
+
+  // screen area
+  ctx.fillStyle = t.stabilized ? 'rgba(58,214,194,0.14)' : 'rgba(194,69,58,0.14)';
+  ctx.fillRect(t.x+5, t.y+7, t.w-10, t.h-18);
+  ctx.strokeStyle = 'rgba(5,7,8,0.7)';
+  ctx.strokeRect(t.x+5.5, t.y+7.5, t.w-11, t.h-19);
+
+  // screen lines
+  ctx.fillStyle = col;
+  for (let i=0;i<4;i++){
+    const ly = t.y+12+i*7;
+    const lw = t.stabilized ? t.w-14 : (6 + (i*7)%(t.w-16));
+    ctx.globalAlpha = t.stabilized ? 0.82 : (0.32+0.52*Math.abs(Math.sin(performance.now()/190+i)));
+    ctx.fillRect(t.x+7, ly, lw, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // small lower panel and label
+  ctx.fillStyle = 'rgba(5,7,8,0.34)';
+  ctx.fillRect(t.x+4, t.y+t.h-8, t.w-8, 4);
+  ctx.font = '8px monospace';
+  ctx.textAlign='center';
+  ctx.fillStyle = col;
+  ctx.fillText(label, t.x+t.w/2, t.y+t.h+11);
+  ctx.restore();
+}
+
+function drawCompletionZone(){
+  const z = LEVEL.completionZone;
+  const live = Game.terminalsStabilized >= LEVEL.routeTerminals.length;
+  ctx.save();
+  const col = live ? COLORS.signal : 'rgba(93,107,117,0.48)';
+
+  // access hatch frame
+  ctx.fillStyle = live ? 'rgba(58,214,194,0.07)' : 'rgba(16,23,29,0.28)';
+  ctx.fillRect(z.x, z.y, z.w, z.h);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(z.x+0.5, z.y+0.5, z.w-1, z.h-1);
+
+  // hatch ribs / restored route marker
+  ctx.strokeStyle = live ? 'rgba(58,214,194,0.72)' : 'rgba(93,107,117,0.34)';
+  ctx.lineWidth = 1;
+  for (let i=1;i<3;i++){
+    const yy = z.y + i*z.h/3;
+    ctx.beginPath(); ctx.moveTo(z.x+6, yy); ctx.lineTo(z.x+z.w-6, yy); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(z.x+z.w/2, z.y+6); ctx.lineTo(z.x+z.w/2, z.y+z.h-6); ctx.stroke();
+
+  if (live){
+    ctx.globalAlpha = 0.12 + 0.1*Math.sin(performance.now()/300);
+    ctx.fillStyle = COLORS.signal;
+    ctx.fillRect(z.x, z.y, z.w, z.h);
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = COLORS.signal; ctx.shadowBlur = 10;
+    ctx.strokeStyle = COLORS.signal;
+    ctx.strokeRect(z.x+3.5, z.y+3.5, z.w-7, z.h-7);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = live ? COLORS.signal : COLORS.inkDim;
+  ctx.font = '8px monospace';
+  ctx.textAlign='center';
+  ctx.fillText(live?'RESTORED ACCESS':'ACCESS LOCKED', z.x+z.w/2, z.y-6);
+  ctx.restore();
+}
+
+function drawEli(){
+  const p = player;
+  const walk = (p.grounded && Math.abs(p.vx) > 0.35) ? Math.sin(performance.now()/90) : 0;
+  const legA = walk > 0 ? 1 : 0;
+  const legB = walk > 0 ? 0 : 1;
+  ctx.save();
+
+  // readable no-helmet field-operator silhouette; hitbox remains p.w x p.h.
+  const skin = '#c9b38e';
+  const hair = '#20262b';
+  const suit = COLORS.ink;
+  const vest = COLORS.amber;
+  const pack = COLORS.concrete2;
+  const boot = '#11171b';
+
+  // faint personal shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.fillRect(p.x+2, p.y+p.h, p.w-4, 3);
+
+  // legs
+  ctx.fillStyle = suit;
+  ctx.fillRect(p.x+6-legA, p.y+22, 5, 10);
+  ctx.fillRect(p.x+14+legB, p.y+22, 5, 10);
+  ctx.fillStyle = boot;
+  ctx.fillRect(p.x+5-legA, p.y+31, 7, 3);
+  ctx.fillRect(p.x+13+legB, p.y+31, 7, 3);
+
+  // torso and tool vest
+  ctx.fillStyle = suit;
+  ctx.fillRect(p.x+5, p.y+10, 14, 14);
+  ctx.fillStyle = vest;
+  ctx.fillRect(p.x+6, p.y+13, 12, 5);
+  ctx.fillStyle = 'rgba(5,7,8,0.45)';
+  ctx.fillRect(p.x+11, p.y+10, 2, 14);
+
+  // backpack/toolpack
+  ctx.fillStyle = pack;
+  if (p.facing > 0) ctx.fillRect(p.x+1, p.y+13, 5, 11);
+  else ctx.fillRect(p.x+18, p.y+13, 5, 11);
+  ctx.fillStyle = COLORS.signal;
+  if (p.facing > 0) ctx.fillRect(p.x+2, p.y+15, 2, 5);
+  else ctx.fillRect(p.x+20, p.y+15, 2, 5);
+
+  // head — no helmet
+  ctx.fillStyle = skin;
+  ctx.fillRect(p.x+8, p.y+3, 9, 8);
+  ctx.fillStyle = hair;
+  ctx.fillRect(p.x+7, p.y+1, 11, 4);
+  ctx.fillRect(p.x+7, p.y+4, 3, 4);
+
+  // eye / facing pixel
+  ctx.fillStyle = COLORS.signal;
+  if (p.facing > 0) ctx.fillRect(p.x+15, p.y+6, 2, 2);
+  else ctx.fillRect(p.x+8, p.y+6, 2, 2);
+
+  // arms / tool posture
+  ctx.fillStyle = suit;
+  if (player.grappling && player.grapTarget){
+    // raised arm toward grapple line
+    if (p.facing > 0){
+      ctx.fillRect(p.x+18, p.y+8, 4, 10);
+      ctx.fillStyle = COLORS.amber; ctx.fillRect(p.x+19, p.y+7, 4, 3);
+    } else {
+      ctx.fillRect(p.x+2, p.y+8, 4, 10);
+      ctx.fillStyle = COLORS.amber; ctx.fillRect(p.x+1, p.y+7, 4, 3);
+    }
+  } else {
+    ctx.fillRect(p.x+3, p.y+13, 4, 10);
+    ctx.fillRect(p.x+18, p.y+13, 4, 10);
+  }
+
+  // small outline for readability over bright objects
+  ctx.strokeStyle = 'rgba(5,7,8,0.75)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(p.x+4.5, p.y+0.5, 15, 33);
+  ctx.restore();
+}
+
+/* =============================================================
+   [SCENES]  Screen transitions / scene manager
+   ============================================================= */
+const Scenes = {
+  show(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    if (id) document.getElementById(id).classList.add('active');
+  },
+  // begin a fresh run of Game.runLength levels
+  startGame(){
+    Game.runIndex = 0;
+    Game.runTotalSecs = 0;
+    Game.runStrain = 0;
+    Game.state = STATE.PLAYING;
+    this.show(null);
+    AnchorRun.start();
+  },
+  // advance to the next level within the current run
+  nextLevel(){
+    Game.runIndex++;
+    Game.state = STATE.PLAYING;
+    this.show(null);
+    AnchorRun.start();
+  },
+  togglePause(){
+    if (Game.state === STATE.PLAYING){
+      Game.state = STATE.PAUSED;
+      releaseAllInputs(); // drop held keys/edges so Eli is still and nothing fires on resume
+      this.show('screen-paused');
+    }
+    else if (Game.state === STATE.PAUSED){ Game.state = STATE.PLAYING; this.show(null); }
+  },
+  complete(){
+    Game.state = STATE.COMPLETE;
+    const secs = (performance.now()-Game.startTime)/1000;
+    Game.runTotalSecs += secs;
+    Game.runStrain += Game.strainEvents;
+
+    const eyebrow = document.getElementById('complete-eyebrow');
+    const title   = document.getElementById('complete-title');
+    const stats   = document.getElementById('complete-stats');
+    const btn     = document.getElementById('btn-replay');
+    const runDone = Game.runIndex >= Game.runLength - 1;
+
+    if (runDone){
+      // end of the 3-level run
+      eyebrow.textContent = 'Run Complete';
+      title.innerHTML = 'RUN<br>RESTORED';
+      stats.textContent =
+        `${Game.runLength} sectors restored in ${Game.runTotalSecs.toFixed(1)}s total. ` +
+        `${Game.runStrain} strain event${Game.runStrain===1?'':'s'} across the run. No jump used.`;
+      btn.textContent = 'New Run';
+    } else {
+      // mid-run: this sector cleared, next one queued
+      eyebrow.textContent = `Sector ${Game.runIndex+1} of ${Game.runLength} Restored`;
+      title.innerHTML = 'ACCESS<br>STABILIZED';
+      stats.textContent =
+        `Terminal stabilized in ${secs.toFixed(1)}s. ` +
+        `${Game.strainEvents} strain event${Game.strainEvents===1?'':'s'}. Next sector ready.`;
+      btn.textContent = 'Next Sector';
+    }
+    this.show('screen-complete');
+  }
+};
+
+document.getElementById('btn-start').addEventListener('click', ()=>Scenes.startGame());
+document.getElementById('btn-resume').addEventListener('click', ()=>Scenes.togglePause());
+document.getElementById('btn-replay').addEventListener('click', ()=>{
+  if (Game.runIndex >= Game.runLength - 1) Scenes.startGame();
+  else Scenes.nextLevel();
+});
+
+/* =============================================================
+   [MAIN]  Loop
+   ============================================================= */
+// reveal touch controls on coarse pointers
+if (window.matchMedia('(hover: none) and (pointer: coarse)').matches){
+  document.getElementById('touch').classList.add('active');
+}
+
+let last = performance.now();
+function loop(now){
+  // The whole frame is guarded: if update or render ever throws, we log it
+  // and still re-arm requestAnimationFrame on the next line, so a single bad
+  // frame degrades gracefully instead of freezing the game forever.
+  try {
+    const dt = Math.min(33, now - last); last = now;
+    if (Game.state === STATE.PLAYING) AnchorRun.update(now, dt);
+    // always render world behind overlays except on title
+    if (Game.state !== STATE.TITLE){
+      drawWorld();
+      drawHUD();
+    } else {
+      ctx.fillStyle = COLORS.bg; ctx.fillRect(0,0,WORLD.w,WORLD.h);
+    }
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.error) console.error('frame error:', err);
+    last = now; // keep the clock sane so dt doesn't spike after a thrown frame
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
