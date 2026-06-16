@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Play Anchor Run
+    url: https://skabkleveta-creator.github.io/ANCHOR_RUN_Public_Game/
+    about: Play the public Anchor Run build before submitting a bug or playtest report.
+  - name: Skab Digital Reality Arcade
+    url: https://skabkleveta-creator.github.io/
+    about: Return to the arcade landing page.
